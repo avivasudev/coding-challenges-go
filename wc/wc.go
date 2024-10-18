@@ -8,28 +8,18 @@ import (
 	"os"
 )
 
-func countBytes(filePath string) int64 {
-	// Get file information
-	fileInfo, err := os.Stat(filePath)
+func countBytes(file *os.File) int64 {
+
+	fileInfo, err := file.Stat()
+
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Fatalf("The file %s does not exist", filePath)
-		} else {
-			log.Fatalf("Failed to get file information: %v", err)
-		}
+		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
 
 	return fileInfo.Size()
 }
 
-func countLines(filePath string) int {
-	// Open the file
-	file, err := os.Open(filePath)
-
-	if err != nil {
-		log.Fatalf("Failed to open the file: %v", err)
-	}
-	defer file.Close()
+func countLines(file *os.File) int {
 
 	count := 0
 
@@ -41,18 +31,15 @@ func countLines(filePath string) int {
 		count++
 	}
 
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+	}
+
 	return count
 
 }
 
-func countWords(filePath string) int {
-	// Open the file
-	file, err := os.Open(filePath)
-
-	if err != nil {
-		log.Fatalf("Failed to open the file: %v", err)
-	}
-	defer file.Close()
+func countWords(file *os.File) int {
 
 	count := 0
 
@@ -64,18 +51,15 @@ func countWords(filePath string) int {
 		count++
 	}
 
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+	}
+
 	return count
 
 }
 
-func countChars(filePath string) int {
-	// Open the file
-	file, err := os.Open(filePath)
-
-	if err != nil {
-		log.Fatalf("Failed to open the file: %v", err)
-	}
-	defer file.Close()
+func countChars(file *os.File) int {
 
 	count := 0
 
@@ -85,6 +69,10 @@ func countChars(filePath string) int {
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
 		count++
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
 
 	return count
@@ -107,55 +95,52 @@ func main() {
 
 	fmt.Printf("%d %d\n", len(args), flag.NFlag())
 
+	var file *os.File
+	var file_err error
 	var filePath string
 
 	if len(args) == 0 {
 
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			filePath = scanner.Text()
+		file = os.Stdin
+
+	} else if len(args) == 1 {
+		filePath = args[0]
+
+		// Open the file
+		file, file_err = os.Open(filePath)
+
+		if file_err != nil {
+			log.Fatalf("Failed to open the file: %v", file_err)
 		}
-
-		// Check for errors
-		if err := scanner.Err(); err != nil {
-			fmt.Println(err)
-		}
-
-		fmt.Println(filePath)
-
+		defer file.Close()
 	}
 
-	fmt.Println(filePath)
+	// fmt.Println(filePath)
 
 	if flag.NFlag() == 1 {
-		if filePath == "" {
-			filePath = args[0]
-		}
 
 		if *c {
-			count := countBytes(filePath)
+			count := countBytes(file)
 			fmt.Printf("%d %s", count, filePath)
 
 		} else if *l {
-			count := countLines(filePath)
+			count := countLines(file)
 			fmt.Printf("%d %s", count, filePath)
 
 		} else if *w {
-			count := countWords(filePath)
+			count := countWords(file)
 			fmt.Printf("%d %s", count, filePath)
 
 		} else if *m {
-			count := countChars(filePath)
+			count := countChars(file)
 			fmt.Printf("%d %s", count, filePath)
 
 		}
 	} else if flag.NFlag() == 0 {
-		if filePath == "" {
-			filePath = args[0]
-		}
-		byte_count := countBytes(filePath)
-		line_count := countLines(filePath)
-		word_count := countWords(filePath)
+
+		byte_count := countBytes(file)
+		line_count := countLines(file)
+		word_count := countWords(file)
 
 		fmt.Printf("%d %d %d %s", byte_count, line_count, word_count, filePath)
 
