@@ -4,19 +4,32 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 )
 
-func countBytes(file *os.File) int64 {
+func countBytes(file *os.File) int {
 
-	fileInfo, err := file.Stat()
+	reader := bufio.NewReader(file)
 
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+	count := 0
+
+	buffer := make([]byte, 1024) // Read in 1KB chunks
+
+	for {
+		chunk_count, err := reader.Read(buffer)
+		count += chunk_count
+
+		if err != nil {
+			if err == io.EOF {
+				break // End of file
+			}
+			log.Fatal(err)
+		}
 	}
 
-	return fileInfo.Size()
+	return count
 }
 
 func countLines(file *os.File) int {
@@ -32,7 +45,8 @@ func countLines(file *os.File) int {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		log.SetOutput(os.Stderr)
+		log.Printf("reading input to count lines: %v\n", err)
 	}
 
 	return count
@@ -52,7 +66,8 @@ func countWords(file *os.File) int {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		log.SetOutput(os.Stderr)
+		log.Printf("reading input to count words: %v\n", err)
 	}
 
 	return count
@@ -72,7 +87,8 @@ func countChars(file *os.File) int {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		log.SetOutput(os.Stderr)
+		log.Printf("reading input to count chars: %v\n", err)
 	}
 
 	return count
@@ -92,8 +108,6 @@ func main() {
 
 	// The remaining arguments after flags are parsed
 	args := flag.Args()
-
-	fmt.Printf("%d %d\n", len(args), flag.NFlag())
 
 	var file *os.File
 	var file_err error
@@ -115,34 +129,34 @@ func main() {
 		defer file.Close()
 	}
 
-	// fmt.Println(filePath)
-
 	if flag.NFlag() == 1 {
 
 		if *c {
 			count := countBytes(file)
-			fmt.Printf("%d %s", count, filePath)
+			fmt.Printf("%d %s\n", count, filePath)
 
 		} else if *l {
 			count := countLines(file)
-			fmt.Printf("%d %s", count, filePath)
+			fmt.Printf("%d %s\n", count, filePath)
 
 		} else if *w {
 			count := countWords(file)
-			fmt.Printf("%d %s", count, filePath)
+			fmt.Printf("%d %s\n", count, filePath)
 
 		} else if *m {
 			count := countChars(file)
-			fmt.Printf("%d %s", count, filePath)
+			fmt.Printf("%d %s\n", count, filePath)
 
 		}
 	} else if flag.NFlag() == 0 {
 
 		byte_count := countBytes(file)
+		file.Seek(0, io.SeekStart)
 		line_count := countLines(file)
+		file.Seek(0, io.SeekStart)
 		word_count := countWords(file)
 
-		fmt.Printf("%d %d %d %s", byte_count, line_count, word_count, filePath)
+		fmt.Printf("%d %d %d %s\n", byte_count, line_count, word_count, filePath)
 
 	}
 }
