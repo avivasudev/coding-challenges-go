@@ -8,6 +8,10 @@
 *.so
 *.dylib
 
+# Project binaries
+json-parser
+wc
+
 # Test binary, built with `go test -c`
 *.test
 
