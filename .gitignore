@@ -8,9 +8,9 @@
 *.so
 *.dylib
 
-# Project binaries
-json-parser
-wc
+# Project binaries (specific paths to avoid ignoring directories)
+json-parser/json-parser
+wc/wc
 
 # Test binary, built with `go test -c`
 *.test
