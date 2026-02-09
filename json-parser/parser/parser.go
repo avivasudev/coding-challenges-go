@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"errors"
+	"fmt"
 	"unicode"
 )
 
@@ -11,6 +11,9 @@ type TokenType int
 const (
 	LEFT_BRACE TokenType = iota
 	RIGHT_BRACE
+	STRING
+	COLON
+	COMMA
 	EOF
 	INVALID
 )
@@ -29,6 +32,12 @@ func (t TokenType) String() string {
 		return "LEFT_BRACE"
 	case RIGHT_BRACE:
 		return "RIGHT_BRACE"
+	case STRING:
+		return "STRING"
+	case COLON:
+		return "COLON"
+	case COMMA:
+		return "COMMA"
 	case EOF:
 		return "EOF"
 	case INVALID:
@@ -75,6 +84,58 @@ func (t *Tokenizer) skipWhitespace() {
 	}
 }
 
+// parseStringToken reads a complete string token with escape handling
+func (t *Tokenizer) parseStringToken(startPos int) Token {
+	var result string
+
+	for t.position < len(t.input) {
+		char := rune(t.input[t.position])
+
+		if char == '"' {
+			// End of string
+			t.position++
+			return Token{Type: STRING, Value: result, Position: startPos}
+		}
+
+		if char == '\\' {
+			// Handle escape sequences
+			t.position++
+			if t.position >= len(t.input) {
+				return Token{Type: INVALID, Value: "unterminated string", Position: startPos}
+			}
+
+			nextChar := rune(t.input[t.position])
+			switch nextChar {
+			case '"':
+				result += "\""
+			case '\\':
+				result += "\\"
+			case '/':
+				result += "/"
+			case 'b':
+				result += "\b"
+			case 'f':
+				result += "\f"
+			case 'n':
+				result += "\n"
+			case 'r':
+				result += "\r"
+			case 't':
+				result += "\t"
+			default:
+				result += string(nextChar)
+			}
+			t.position++
+		} else {
+			result += string(char)
+			t.position++
+		}
+	}
+
+	// If we reach here, string was not terminated
+	return Token{Type: INVALID, Value: "unterminated string", Position: startPos}
+}
+
 // NextToken returns the next token from the input
 func (t *Tokenizer) NextToken() Token {
 	// Skip any leading whitespace
@@ -94,73 +155,128 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: LEFT_BRACE, Value: "{", Position: tokenPos}
 	case '}':
 		return Token{Type: RIGHT_BRACE, Value: "}", Position: tokenPos}
+	case '"':
+		// Parse string token (don't include the quote)
+		return t.parseStringToken(tokenPos)
+	case ':':
+		return Token{Type: COLON, Value: ":", Position: tokenPos}
+	case ',':
+		return Token{Type: COMMA, Value: ",", Position: tokenPos}
 	default:
-		// Any other character is invalid for step 1
+		// Any other character is invalid
 		return Token{Type: INVALID, Value: string(char), Position: tokenPos}
 	}
 }
 
-// Parser state constants
-type ParserState int
-
-const (
-	START ParserState = iota
-	IN_OBJECT
-	COMPLETE
-	ERROR
-)
-
-// String method for better debugging
-func (s ParserState) String() string {
-	switch s {
-	case START:
-		return "START"
-	case IN_OBJECT:
-		return "IN_OBJECT"
-	case COMPLETE:
-		return "COMPLETE"
-	case ERROR:
-		return "ERROR"
-	default:
-		return "UNKNOWN"
-	}
+// Parser structure that wraps the tokenizer and tracks current token
+type Parser struct {
+	tokenizer    *Tokenizer
+	currentToken Token
+	position     int
 }
 
-// ValidateJSON validates if the input string is valid JSON for step 1
-func ValidateJSON(input string) error {
+// NewParser creates a new parser with the given input
+func NewParser(input string) *Parser {
 	tokenizer := NewTokenizer(input)
-	state := START
+	parser := &Parser{
+		tokenizer: tokenizer,
+		position:  0,
+	}
+	parser.advance() // Load first token
+	return parser
+}
 
-	for {
-		token := tokenizer.NextToken()
+// advance moves to the next token
+func (p *Parser) advance() {
+	p.currentToken = p.tokenizer.NextToken()
+	p.position++
+}
 
-		// Process token based on current state
-		switch state {
-		case START:
-			switch token.Type {
-			case LEFT_BRACE:
-				state = IN_OBJECT
-			case EOF:
-				return errors.New("empty input - not valid JSON")
-			default:
-				return errors.New("expected '{' at start of JSON")
-			}
+// ParseJSON is the main entry point for parsing
+func (p *Parser) ParseJSON() error {
+	err := p.parseObject()
+	if err != nil {
+		return err
+	}
 
-		case IN_OBJECT:
-			switch token.Type {
-			case RIGHT_BRACE:
-				state = COMPLETE
-			default:
-				return errors.New("expected '}' after '{'")
-			}
+	if p.currentToken.Type != EOF {
+		return fmt.Errorf("unexpected token after JSON at position %d", p.currentToken.Position)
+	}
 
-		case COMPLETE:
-			switch token.Type {
-			case EOF:
-				return nil // Success!
-			default:
-				return errors.New("unexpected characters after complete JSON")
-			}
+	return nil
+}
+
+// parseObject handles { key:value, key:value }
+func (p *Parser) parseObject() error {
+	if p.currentToken.Type != LEFT_BRACE {
+		return fmt.Errorf("expected '{' at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	// Handle empty object
+	if p.currentToken.Type == RIGHT_BRACE {
+		p.advance()
+		return nil
+	}
+
+	// Parse first key-value pair
+	err := p.parseKeyValuePair()
+	if err != nil {
+		return err
+	}
+
+	// Parse additional key-value pairs
+	for p.currentToken.Type == COMMA {
+		p.advance()
+
+		// Check for trailing comma (invalid)
+		if p.currentToken.Type == RIGHT_BRACE {
+			return fmt.Errorf("trailing comma is not allowed at position %d", p.currentToken.Position)
+		}
+
+		err := p.parseKeyValuePair()
+		if err != nil {
+			return err
 		}
 	}
+
+	if p.currentToken.Type != RIGHT_BRACE {
+		return fmt.Errorf("expected '}' at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	return nil
+}
+
+// parseKeyValuePair handles "key": "value"
+func (p *Parser) parseKeyValuePair() error {
+	// Parse key
+	if p.currentToken.Type != STRING {
+		return fmt.Errorf("expected string key at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	// Parse colon
+	if p.currentToken.Type != COLON {
+		return fmt.Errorf("expected ':' after key at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	// Parse value
+	return p.parseValue()
+}
+
+// parseValue handles string values (for Step 2)
+func (p *Parser) parseValue() error {
+	if p.currentToken.Type != STRING {
+		return fmt.Errorf("expected string value at position %d", p.currentToken.Position)
+	}
+	p.advance()
+	return nil
+}
+
+// ValidateJSON validates if the input string is valid JSON
+func ValidateJSON(input string) error {
+	parser := NewParser(input)
+	return parser.ParseJSON()
 }
