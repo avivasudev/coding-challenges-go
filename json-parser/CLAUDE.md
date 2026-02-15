@@ -125,6 +125,52 @@ Based on `tests/step4/valid.json`, the next iteration needs to support:
 - Existing value parsing logic can be reused for array elements and nested objects
 - Error reporting system ready for complex nested structures
 
+## Implementation Patterns (Critical for Resumption)
+
+### Adding New Token Types (Step 3 Pattern)
+1. **Extend TokenType enum** (around line 11):
+   ```go
+   const (
+       // ... existing types
+       NEW_TOKEN_TYPE  // Add here, before EOF
+   )
+   ```
+2. **Add String() method case** (around line 40):
+   ```go
+   case NEW_TOKEN_TYPE:
+       return "NEW_TOKEN_TYPE"
+   ```
+3. **Add NextToken() dispatch** (around line 230):
+   ```go
+   case 'x', 'y':  // triggering characters
+       return t.parseNewTokenType(tokenPos, char)
+   ```
+4. **Create parsing method** (after parseNumberToken):
+   ```go
+   func (t *Tokenizer) parseNewTokenType(startPos int, firstChar rune) Token
+   ```
+5. **Update parseValue()** to accept new token type
+
+### Key Function Signatures
+- `func NewTokenizer(input string) *Tokenizer`
+- `func (t *Tokenizer) NextToken() Token`
+- `func (t *Tokenizer) parseKeywordToken(startPos int, firstChar rune) Token`
+- `func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token`
+- `func NewParser(input string) *Parser`
+- `func (p *Parser) ParseJSON() error`
+- `func (p *Parser) parseObject() error`
+- `func (p *Parser) parseValue() error`
+- `func ValidateJSON(input string) error` (main entry point)
+
+### Error Message Pattern
+Always use: `fmt.Errorf("message at position %d", p.currentToken.Position)`
+
+### Testing Pattern
+1. Add test files to appropriate `tests/stepX/` directory
+2. Test both valid and invalid cases
+3. Verify error messages include position information
+4. Run regression tests: `./json-parser tests/step1/valid.json` etc.
+
 ## Notes for Future Development
 
 - The recursive descent approach will scale well for nested objects and arrays
@@ -132,3 +178,4 @@ Based on `tests/step4/valid.json`, the next iteration needs to support:
 - Current parser validates but doesn't build a data structure (validation-only)
 - Position tracking enables precise error messages for debugging
 - Modular design allows independent testing of tokenizer vs parser logic
+- **Critical**: Always read the existing parser.go file first to understand current line numbers and structure
