@@ -14,6 +14,10 @@ const (
 	STRING
 	COLON
 	COMMA
+	TRUE
+	FALSE
+	NULL
+	NUMBER
 	EOF
 	INVALID
 )
@@ -38,6 +42,14 @@ func (t TokenType) String() string {
 		return "COLON"
 	case COMMA:
 		return "COMMA"
+	case TRUE:
+		return "TRUE"
+	case FALSE:
+		return "FALSE"
+	case NULL:
+		return "NULL"
+	case NUMBER:
+		return "NUMBER"
 	case EOF:
 		return "EOF"
 	case INVALID:
@@ -136,6 +148,54 @@ func (t *Tokenizer) parseStringToken(startPos int) Token {
 	return Token{Type: INVALID, Value: "unterminated string", Position: startPos}
 }
 
+// parseKeywordToken reads a complete keyword token (true, false, null)
+func (t *Tokenizer) parseKeywordToken(startPos int, firstChar rune) Token {
+	var keyword string
+	keyword += string(firstChar)
+
+	// Read alphabetic characters
+	for t.position < len(t.input) {
+		char := rune(t.input[t.position])
+		if unicode.IsLetter(char) {
+			keyword += string(char)
+			t.position++
+		} else {
+			break
+		}
+	}
+
+	// Match against valid keywords (case-sensitive)
+	switch keyword {
+	case "true":
+		return Token{Type: TRUE, Value: keyword, Position: startPos}
+	case "false":
+		return Token{Type: FALSE, Value: keyword, Position: startPos}
+	case "null":
+		return Token{Type: NULL, Value: keyword, Position: startPos}
+	default:
+		return Token{Type: INVALID, Value: keyword, Position: startPos}
+	}
+}
+
+// parseNumberToken reads a complete number token (positive integers)
+func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token {
+	var number string
+	number += string(firstChar)
+
+	// Read consecutive digits
+	for t.position < len(t.input) {
+		char := rune(t.input[t.position])
+		if unicode.IsDigit(char) {
+			number += string(char)
+			t.position++
+		} else {
+			break
+		}
+	}
+
+	return Token{Type: NUMBER, Value: number, Position: startPos}
+}
+
 // NextToken returns the next token from the input
 func (t *Tokenizer) NextToken() Token {
 	// Skip any leading whitespace
@@ -162,6 +222,10 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: COLON, Value: ":", Position: tokenPos}
 	case ',':
 		return Token{Type: COMMA, Value: ",", Position: tokenPos}
+	case 't', 'f', 'n':
+		return t.parseKeywordToken(tokenPos, char)
+	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		return t.parseNumberToken(tokenPos, char)
 	default:
 		// Any other character is invalid
 		return Token{Type: INVALID, Value: string(char), Position: tokenPos}
@@ -266,13 +330,15 @@ func (p *Parser) parseKeyValuePair() error {
 	return p.parseValue()
 }
 
-// parseValue handles string values (for Step 2)
+// parseValue handles string, boolean, null, and number values (for Step 3)
 func (p *Parser) parseValue() error {
-	if p.currentToken.Type != STRING {
-		return fmt.Errorf("expected string value at position %d", p.currentToken.Position)
+	switch p.currentToken.Type {
+	case STRING, TRUE, FALSE, NULL, NUMBER:
+		p.advance()
+		return nil
+	default:
+		return fmt.Errorf("expected value at position %d", p.currentToken.Position)
 	}
-	p.advance()
-	return nil
 }
 
 // ValidateJSON validates if the input string is valid JSON
