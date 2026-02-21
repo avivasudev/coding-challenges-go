@@ -11,6 +11,8 @@ type TokenType int
 const (
 	LEFT_BRACE TokenType = iota
 	RIGHT_BRACE
+	LEFT_BRACKET
+	RIGHT_BRACKET
 	STRING
 	COLON
 	COMMA
@@ -36,6 +38,10 @@ func (t TokenType) String() string {
 		return "LEFT_BRACE"
 	case RIGHT_BRACE:
 		return "RIGHT_BRACE"
+	case LEFT_BRACKET:
+		return "LEFT_BRACKET"
+	case RIGHT_BRACKET:
+		return "RIGHT_BRACKET"
 	case STRING:
 		return "STRING"
 	case COLON:
@@ -215,6 +221,10 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: LEFT_BRACE, Value: "{", Position: tokenPos}
 	case '}':
 		return Token{Type: RIGHT_BRACE, Value: "}", Position: tokenPos}
+	case '[':
+		return Token{Type: LEFT_BRACKET, Value: "[", Position: tokenPos}
+	case ']':
+		return Token{Type: RIGHT_BRACKET, Value: "]", Position: tokenPos}
 	case '"':
 		// Parse string token (don't include the quote)
 		return t.parseStringToken(tokenPos)
@@ -330,15 +340,61 @@ func (p *Parser) parseKeyValuePair() error {
 	return p.parseValue()
 }
 
-// parseValue handles string, boolean, null, and number values (for Step 3)
+// parseValue handles string, boolean, null, number, array, and object values (for Step 4)
 func (p *Parser) parseValue() error {
 	switch p.currentToken.Type {
 	case STRING, TRUE, FALSE, NULL, NUMBER:
 		p.advance()
 		return nil
+	case LEFT_BRACE:
+		return p.parseObject()
+	case LEFT_BRACKET:
+		return p.parseArray()
 	default:
 		return fmt.Errorf("expected value at position %d", p.currentToken.Position)
 	}
+}
+
+// parseArray handles [ value, value, value ]
+func (p *Parser) parseArray() error {
+	if p.currentToken.Type != LEFT_BRACKET {
+		return fmt.Errorf("expected '[' at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	// Handle empty array
+	if p.currentToken.Type == RIGHT_BRACKET {
+		p.advance()
+		return nil
+	}
+
+	// Parse first value
+	err := p.parseValue()
+	if err != nil {
+		return err
+	}
+
+	// Parse additional values
+	for p.currentToken.Type == COMMA {
+		p.advance()
+
+		// Check for trailing comma (invalid)
+		if p.currentToken.Type == RIGHT_BRACKET {
+			return fmt.Errorf("trailing comma is not allowed at position %d", p.currentToken.Position)
+		}
+
+		err := p.parseValue()
+		if err != nil {
+			return err
+		}
+	}
+
+	if p.currentToken.Type != RIGHT_BRACKET {
+		return fmt.Errorf("expected ']' at position %d", p.currentToken.Position)
+	}
+	p.advance()
+
+	return nil
 }
 
 // ValidateJSON validates if the input string is valid JSON

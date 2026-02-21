@@ -10,6 +10,7 @@ A **step-by-step JSON parser implementation in Go** that incrementally adds supp
 - **Step 1**: Parse empty objects `{}`
 - **Step 2**: Parse string key-value pairs `{"key": "value"}` and multiple pairs
 - **Step 3**: Parse boolean, null, and numeric values `{"key1": true, "key2": false, "key3": null, "key4": "value", "key5": 101}`
+- **Step 4**: Parse arrays and nested objects `{"key-o": {"inner key": "inner value"}, "key-l": ["list value"]}`
 
 ### 🎯 Current Capabilities
 - Empty objects: `{}`
@@ -18,29 +19,35 @@ A **step-by-step JSON parser implementation in Go** that incrementally adds supp
 - **Boolean values**: `true`, `false` (case-sensitive)
 - **Null values**: `null`
 - **Numeric values**: positive integers like `101`
+- **Arrays**: empty `[]` and populated `["value1", "value2"]`
+- **Nested objects**: `{"outer": {"inner": "value"}}`
+- **Mixed structures**: objects containing arrays, arrays containing objects
+- **Arbitrarily deep nesting**: `{"a": [{"b": {"c": ["d"]}}]}`
 - Whitespace handling and normalization
 - String escape sequence support (`\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`)
-- Trailing comma detection and rejection
+- Trailing comma detection and rejection (objects and arrays)
 - Detailed error reporting with position information
 
 ## Architecture
 
 ### Two-Phase Design
-1. **Tokenizer** (`parser/parser.go:51-169`):
+1. **Tokenizer** (`parser/parser.go:51-200`):
    - Lexical analysis: breaks input into tokens
-   - Supported tokens: `LEFT_BRACE`, `RIGHT_BRACE`, `STRING`, `COLON`, `COMMA`, `TRUE`, `FALSE`, `NULL`, `NUMBER`, `EOF`, `INVALID`
+   - Supported tokens: `LEFT_BRACE`, `RIGHT_BRACE`, `LEFT_BRACKET`, `RIGHT_BRACKET`, `STRING`, `COLON`, `COMMA`, `TRUE`, `FALSE`, `NULL`, `NUMBER`, `EOF`, `INVALID`
    - Position tracking for error reporting
    - String parsing with escape sequence handling
    - Keyword parsing with case-sensitive matching
    - Integer number parsing
 
-2. **Recursive Descent Parser** (`parser/parser.go:172-276`):
+2. **Recursive Descent Parser** (`parser/parser.go:240-390`):
    - Syntactic analysis: validates token sequences against JSON grammar
    - Key functions:
      - `parseObject()` - handles object structure `{ ... }`
+     - `parseArray()` - handles array structure `[ ... ]`
      - `parseKeyValuePair()` - handles `"key": "value"` pairs
-     - `parseValue()` - supports string, boolean, null, and number values
+     - `parseValue()` - supports all JSON value types (primitives, objects, arrays)
    - Grammar-driven approach that mirrors JSON structure
+   - **Recursive by design**: `parseValue()` can call `parseObject()` or `parseArray()`, enabling unlimited nesting depth
 
 ### Key Design Principles
 - **Separation of Concerns**: Clean split between lexical and syntactic analysis
@@ -59,7 +66,7 @@ json-parser/
 │   ├── step1/             # Empty object tests
 │   ├── step2/             # String key-value tests
 │   ├── step3/             # Boolean, null, number tests
-│   └── step4/             # Additional tests (TODO)
+│   └── step4/             # Array and nested object tests
 ├── go.mod                 # Go module definition
 ├── README.md              # Project documentation
 └── CLAUDE.md              # This file
@@ -87,6 +94,11 @@ go build -o json-parser
 # Step 3: Boolean, null, and numeric values
 ./json-parser tests/step3/valid.json      # Should print "Valid JSON"
 ./json-parser tests/step3/invalid.json    # Should print error
+
+# Step 4: Arrays and nested objects
+./json-parser tests/step4/valid.json      # Should print "Valid JSON"
+./json-parser tests/step4/valid2.json     # Should print "Valid JSON"
+./json-parser tests/step4/invalid.json    # Should print error
 ```
 
 ### Test Files Content
@@ -95,6 +107,9 @@ go build -o json-parser
 - `tests/step2/valid2.json`: `{"key": "value", "key2": "value"}`
 - `tests/step3/valid.json`: `{"key1": true, "key2": false, "key3": null, "key4": "value", "key5": 101}`
 - `tests/step3/invalid.json`: `{"key2": False}` (case sensitivity test - "False" should be rejected)
+- `tests/step4/valid.json`: `{"key": "value", "key-n": 101, "key-o": {}, "key-l": []}` (empty objects and arrays)
+- `tests/step4/valid2.json`: `{"key": "value", "key-n": 101, "key-o": {"inner key": "inner value"}, "key-l": ["list value"]}` (nested objects and arrays with values)
+- `tests/step4/invalid.json`: `{"key-l": ['list value']}` (single quotes in array - should be rejected)
 
 ## ✅ Step 3 Implementation (Completed)
 
@@ -111,23 +126,44 @@ go build -o json-parser
 - Extended `parseValue()` to accept multiple value types
 - Maintained position tracking for precise error reporting
 
-## Next Steps (Step 4)
+## ✅ Step 4 Implementation (Completed)
 
-Based on `tests/step4/valid.json`, the next iteration needs to support:
+**Successfully implemented support for:**
+1. **Arrays**: Empty `[]` and populated arrays `["value1", "value2"]`
+2. **Nested objects**: Objects as values `{"outer": {"inner": "value"}}`
+3. **Mixed structures**: Objects containing arrays, arrays containing objects
+4. **Arbitrary nesting depth**: `{"a": [{"b": {"c": ["d"]}}]}`
 
-1. **Nested objects**: `{"key-o": {"inner key": "inner value"}}`
-2. **Arrays**: `{"key-l": ["list value"]}`
-3. **Mixed structures**: Objects and arrays as values
+**Implementation details:**
+- Added new token types: `LEFT_BRACKET`, `RIGHT_BRACKET`
+- Updated `NextToken()` character dispatch for `[` and `]`
+- Implemented `parseArray()` function with comma-separated value parsing
+- Enhanced `parseValue()` to handle objects and arrays as values
+- Recursive design: `parseValue()` → `parseObject()` → `parseValue()` enables unlimited nesting
+- Maintained trailing comma detection and rejection for arrays
+- Preserved all error reporting and position tracking
+
+**Key Architecture Decision:**
+The recursive descent approach proved ideal for nested structures. By allowing `parseValue()` to call both `parseObject()` and `parseArray()`, the parser naturally handles arbitrarily complex nesting without additional complexity.
+
+## Next Steps (Step 5)
+
+Based on typical JSON parser evolution, Step 5 might include:
+
+1. **Floating-point numbers**: `{"pi": 3.14159, "scientific": 1.23e-4}`
+2. **Negative numbers**: `{"temperature": -20, "balance": -1.50}`
+3. **Unicode strings**: `{"unicode": "Hello \u4e16\u754c"}`
+4. **More robust number parsing**: Handle edge cases, overflow, precision
 
 ### Architecture Benefits for Extension
-- Token-based approach makes adding new structural elements straightforward
-- Recursive descent structure naturally accommodates nested constructs
-- Existing value parsing logic can be reused for array elements and nested objects
-- Error reporting system ready for complex nested structures
+- Number parsing logic is already isolated in `parseNumberToken()`
+- Unicode support only requires extending string parsing
+- Token-based approach makes extending numeric formats straightforward
+- Error reporting system ready for number format validation
 
 ## Implementation Patterns (Critical for Resumption)
 
-### Adding New Token Types (Step 3 Pattern)
+### Adding New Token Types (Step 3 & 4 Pattern)
 1. **Extend TokenType enum** (around line 11):
    ```go
    const (
@@ -151,6 +187,24 @@ Based on `tests/step4/valid.json`, the next iteration needs to support:
    ```
 5. **Update parseValue()** to accept new token type
 
+### Adding New Structural Elements (Step 4 Pattern)
+For composite structures like arrays, the pattern is:
+1. **Add token types** for delimiters (`LEFT_BRACKET`, `RIGHT_BRACKET`)
+2. **Add simple character dispatch** (no complex parsing needed for delimiters)
+3. **Create parsing function** that mirrors `parseObject()` pattern:
+   ```go
+   func (p *Parser) parseArray() error {
+       // Expect opening delimiter
+       // Handle empty case
+       // Parse first element
+       // Loop for comma-separated additional elements
+       // Check for trailing comma (reject)
+       // Expect closing delimiter
+   }
+   ```
+4. **Extend parseValue()** to handle new structure type
+5. **Leverage recursion**: new parser can call `parseValue()`, enabling nesting
+
 ### Key Function Signatures
 - `func NewTokenizer(input string) *Tokenizer`
 - `func (t *Tokenizer) NextToken() Token`
@@ -159,6 +213,7 @@ Based on `tests/step4/valid.json`, the next iteration needs to support:
 - `func NewParser(input string) *Parser`
 - `func (p *Parser) ParseJSON() error`
 - `func (p *Parser) parseObject() error`
+- `func (p *Parser) parseArray() error` (added in Step 4)
 - `func (p *Parser) parseValue() error`
 - `func ValidateJSON(input string) error` (main entry point)
 
@@ -173,9 +228,11 @@ Always use: `fmt.Errorf("message at position %d", p.currentToken.Position)`
 
 ## Notes for Future Development
 
-- The recursive descent approach will scale well for nested objects and arrays
-- Consider adding an AST (Abstract Syntax Tree) representation for step 4+
-- Current parser validates but doesn't build a data structure (validation-only)
-- Position tracking enables precise error messages for debugging
+- **✅ Proven Architecture**: The recursive descent approach successfully handles nested objects and arrays with unlimited depth
+- Consider adding an AST (Abstract Syntax Tree) representation for step 5+ if data structure building is needed
+- Current parser validates but doesn't build a data structure (validation-only) - this is by design and works well
+- Position tracking enables precise error messages for debugging complex nested structures
 - Modular design allows independent testing of tokenizer vs parser logic
+- **Recursive Value Parsing**: The key insight from Step 4 - `parseValue()` calling `parseObject()` and `parseArray()` creates natural recursion
 - **Critical**: Always read the existing parser.go file first to understand current line numbers and structure
+- **Step 4 Success**: Arrays and nested objects work flawlessly, proving the architecture scales
