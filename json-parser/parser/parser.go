@@ -151,10 +151,42 @@ func (t *Tokenizer) parseStringToken(startPos int) Token {
 				result += "\r"
 			case 't':
 				result += "\t"
+			case 'u':
+				// Unicode escape sequences (\uXXXX) - must be exactly 4 hex digits
+				t.position++
+				if t.position+3 >= len(t.input) {
+					return Token{Type: INVALID, Value: "incomplete unicode escape sequence", Position: startPos}
+				}
+
+				// Read 4 hex digits
+				hexDigits := t.input[t.position : t.position+4]
+				var codePoint int
+				for i, digit := range hexDigits {
+					var val int
+					if digit >= '0' && digit <= '9' {
+						val = int(digit - '0')
+					} else if digit >= 'a' && digit <= 'f' {
+						val = int(digit - 'a' + 10)
+					} else if digit >= 'A' && digit <= 'F' {
+						val = int(digit - 'A' + 10)
+					} else {
+						return Token{Type: INVALID, Value: "invalid hex digit in unicode escape", Position: startPos}
+					}
+					codePoint = codePoint*16 + val
+					if i == 3 {
+						// Convert code point to rune and add to result
+						result += string(rune(codePoint))
+					}
+				}
+				t.position += 3 // We already advanced by 1, advance 3 more
 			default:
-				result += string(nextChar)
+				// Invalid escape sequence
+				return Token{Type: INVALID, Value: fmt.Sprintf("invalid escape sequence '\\%c'", nextChar), Position: startPos}
 			}
 			t.position++
+		} else if char < 0x20 {
+			// JSON spec: control characters (0x00-0x1F) must be escaped
+			return Token{Type: INVALID, Value: fmt.Sprintf("unescaped control character (0x%02X) in string", char), Position: startPos}
 		} else {
 			result += string(char)
 			t.position++
@@ -194,14 +226,31 @@ func (t *Tokenizer) parseKeywordToken(startPos int, firstChar rune) Token {
 	}
 }
 
-// parseNumberToken reads a complete number token (positive integers)
+// parseNumberToken reads a complete number token (integers, floats, scientific notation)
 func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token {
 	var number string
 	number += string(firstChar)
 
+	// Handle optional minus sign
+	if firstChar == '-' {
+		if t.position >= len(t.input) {
+			return Token{Type: INVALID, Value: "incomplete number after '-'", Position: startPos}
+		}
+
+		nextChar := rune(t.input[t.position])
+		if !unicode.IsDigit(nextChar) {
+			return Token{Type: INVALID, Value: "expected digit after '-'", Position: startPos}
+		}
+
+		// Read the first digit after minus
+		number += string(nextChar)
+		firstChar = nextChar
+		t.position++
+	}
+
 	// Check for invalid leading zeros (JSON spec: numbers cannot have leading zeros except for "0")
 	if firstChar == '0' {
-		// If we start with '0', only allow single '0' or immediately stop
+		// If we start with '0', only allow single '0' followed by '.', 'e', 'E', or end
 		if t.position < len(t.input) {
 			nextChar := rune(t.input[t.position])
 			if unicode.IsDigit(nextChar) {
@@ -209,17 +258,73 @@ func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token {
 				return Token{Type: INVALID, Value: "numbers cannot have leading zeros", Position: startPos}
 			}
 		}
-		return Token{Type: NUMBER, Value: number, Position: startPos}
+		// Don't return yet - might have fractional or exponent part
+	} else {
+		// Read consecutive digits for non-zero integer part
+		for t.position < len(t.input) {
+			char := rune(t.input[t.position])
+			if unicode.IsDigit(char) {
+				number += string(char)
+				t.position++
+			} else {
+				break
+			}
+		}
 	}
 
-	// Read consecutive digits for non-zero numbers
-	for t.position < len(t.input) {
+	// Check for fractional part (decimal point followed by digits)
+	if t.position < len(t.input) && rune(t.input[t.position]) == '.' {
+		number += "."
+		t.position++
+
+		// Must have at least one digit after decimal point
+		if t.position >= len(t.input) || !unicode.IsDigit(rune(t.input[t.position])) {
+			return Token{Type: INVALID, Value: "expected digit after decimal point", Position: startPos}
+		}
+
+		// Read fractional digits
+		for t.position < len(t.input) {
+			char := rune(t.input[t.position])
+			if unicode.IsDigit(char) {
+				number += string(char)
+				t.position++
+			} else {
+				break
+			}
+		}
+	}
+
+	// Check for exponent part (e or E followed by optional +/- and digits)
+	if t.position < len(t.input) {
 		char := rune(t.input[t.position])
-		if unicode.IsDigit(char) {
+		if char == 'e' || char == 'E' {
 			number += string(char)
 			t.position++
-		} else {
-			break
+
+			// Optional +/- sign
+			if t.position < len(t.input) {
+				signChar := rune(t.input[t.position])
+				if signChar == '+' || signChar == '-' {
+					number += string(signChar)
+					t.position++
+				}
+			}
+
+			// Must have at least one digit in exponent
+			if t.position >= len(t.input) || !unicode.IsDigit(rune(t.input[t.position])) {
+				return Token{Type: INVALID, Value: "expected digit in exponent", Position: startPos}
+			}
+
+			// Read exponent digits
+			for t.position < len(t.input) {
+				char := rune(t.input[t.position])
+				if unicode.IsDigit(char) {
+					number += string(char)
+					t.position++
+				} else {
+					break
+				}
+			}
 		}
 	}
 
@@ -258,7 +363,7 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{Type: COMMA, Value: ",", Position: tokenPos}
 	case 't', 'f', 'n':
 		return t.parseKeywordToken(tokenPos, char)
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		return t.parseNumberToken(tokenPos, char)
 	default:
 		// Any other character is invalid
@@ -271,7 +376,10 @@ type Parser struct {
 	tokenizer    *Tokenizer
 	currentToken Token
 	position     int
+	depth        int  // Track nesting depth to prevent stack overflow
 }
+
+const maxNestingDepth = 19
 
 // NewParser creates a new parser with the given input
 func NewParser(input string) *Parser {
@@ -292,7 +400,12 @@ func (p *Parser) advance() {
 
 // ParseJSON is the main entry point for parsing
 func (p *Parser) ParseJSON() error {
-	err := p.parseValue()  // Accept any JSON value, not just objects
+	// Only accept objects or arrays at the top level (more restrictive than RFC 7159)
+	if p.currentToken.Type != LEFT_BRACE && p.currentToken.Type != LEFT_BRACKET {
+		return fmt.Errorf("JSON must be an object or array at position %d", p.currentToken.Position)
+	}
+
+	err := p.parseValue()
 	if err != nil {
 		return err
 	}
@@ -309,6 +422,14 @@ func (p *Parser) parseObject() error {
 	if p.currentToken.Type != LEFT_BRACE {
 		return fmt.Errorf("expected '{' at position %d", p.currentToken.Position)
 	}
+
+	// Check nesting depth
+	p.depth++
+	if p.depth > maxNestingDepth {
+		return fmt.Errorf("maximum nesting depth of %d exceeded at position %d", maxNestingDepth, p.currentToken.Position)
+	}
+	defer func() { p.depth-- }()
+
 	p.advance()
 
 	// Handle empty object
@@ -387,6 +508,14 @@ func (p *Parser) parseArray() error {
 	if p.currentToken.Type != LEFT_BRACKET {
 		return fmt.Errorf("expected '[' at position %d", p.currentToken.Position)
 	}
+
+	// Check nesting depth
+	p.depth++
+	if p.depth > maxNestingDepth {
+		return fmt.Errorf("maximum nesting depth of %d exceeded at position %d", maxNestingDepth, p.currentToken.Position)
+	}
+	defer func() { p.depth-- }()
+
 	p.advance()
 
 	// Handle empty array

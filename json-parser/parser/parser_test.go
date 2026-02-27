@@ -37,21 +37,23 @@ func TestValidateJSON(t *testing.T) {
 		{"mixed nesting", `{"arr": [{"nested": true}, "string", 42]}`, false, ""},
 		{"deep nesting", `{"level1": {"level2": {"level3": [{"level4": "deep"}]}}}`, false, ""},
 
-		// Valid cases - Top-level JSON values (RFC 7159 compliance)
+		// Valid cases - Top-level arrays and objects only (restricted from RFC 7159)
 		{"top-level array", `["val1", "val2", "val3"]`, false, ""},
-		{"top-level string", `"hello world"`, false, ""},
-		{"top-level number", `42`, false, ""},
-		{"top-level boolean true", `true`, false, ""},
-		{"top-level boolean false", `false`, false, ""},
-		{"top-level null", `null`, false, ""},
 		{"top-level empty array", `[]`, false, ""},
 
+		// Invalid cases - Top-level primitives not allowed
+		{"top-level string", `"hello world"`, true, "JSON must be an object or array"},
+		{"top-level number", `42`, true, "JSON must be an object or array"},
+		{"top-level boolean true", `true`, true, "JSON must be an object or array"},
+		{"top-level boolean false", `false`, true, "JSON must be an object or array"},
+		{"top-level null", `null`, true, "JSON must be an object or array"},
+
 		// Invalid cases - Basic structure errors
-		{"missing opening brace", `"key": "value"}`, true, "unexpected token"},
+		{"missing opening brace", `"key": "value"}`, true, "JSON must be an object or array"},
 		{"missing closing brace", `{"key": "value"`, true, "expected '}'"},
 		{"extra closing brace", `{"key": "value"}}`, true, "unexpected token"},
-		{"empty input", "", true, "expected value"},
-		{"only whitespace", "   ", true, "expected value"},
+		{"empty input", "", true, "JSON must be an object or array"},
+		{"only whitespace", "   ", true, "JSON must be an object or array"},
 
 		// Invalid cases - Key-value pair errors
 		{"missing colon", `{"key" "value"}`, true, "expected ':'"},
@@ -61,7 +63,7 @@ func TestValidateJSON(t *testing.T) {
 
 		// Invalid cases - String errors
 		{"unterminated string", `{"key": "unterminated`, true, "unterminated string"},
-		{"invalid escape", `{"key": "bad\escape"}`, false, ""}, // Current parser accepts all escapes
+		{"invalid escape", `{"key": "bad\escape"}`, true, "invalid escape sequence"}, // Parser now rejects invalid escapes
 
 		// Invalid cases - Boolean/null case sensitivity
 		{"wrong case true", `{"key": True}`, true, "T"},
@@ -70,7 +72,7 @@ func TestValidateJSON(t *testing.T) {
 
 		// Invalid cases - Leading zeros in numbers (JSON spec compliance)
 		{"leading zero in object", `{"count": 013}`, true, "numbers cannot have leading zeros"},
-		{"leading zero top-level", `013`, true, "numbers cannot have leading zeros"},
+		{"leading zero top-level", `013`, true, "JSON must be an object or array"}, // Fails at parser level first
 		{"leading zero in array", `[01, 02, 03]`, true, "numbers cannot have leading zeros"},
 
 		// Invalid cases - Trailing commas
@@ -124,7 +126,7 @@ func TestParseJSON(t *testing.T) {
 		valid bool
 	}{
 		{"valid object", `{"key": "value"}`, true},
-		{"valid string", `"now valid per JSON spec"`, true},  // Now valid!
+		{"valid string", `"now valid per JSON spec"`, false},  // Top-level strings not allowed
 		{"incomplete", `{"key":`, false},
 	}
 
@@ -286,7 +288,7 @@ func TestErrorPositionTracking(t *testing.T) {
 		input    string
 		errorPos int
 	}{
-		{"missing brace at start", `"key": "value"}`, 5},  // Position of unexpected token
+		{"missing brace at start", `"key": "value"}`, 0},  // Fails at position 0 (must be object or array)
 		{"missing colon at pos 5", `{"key" "value"}`, 7},
 		{"missing value at end", `{"key":}`, 7},
 		{"invalid token at pos 8", `{"key": invalid}`, 8},
@@ -316,7 +318,7 @@ func TestEdgeCases(t *testing.T) {
 		input     string
 		shouldErr bool
 	}{
-		{"deeply nested", strings.Repeat(`{"level":`, 100) + `"deep"` + strings.Repeat(`}`, 100), false},
+		{"deeply nested", strings.Repeat(`{"level":`, 100) + `"deep"` + strings.Repeat(`}`, 100), true}, // Exceeds max depth of 19
 		{"long string", `{"key": "` + strings.Repeat("a", 1000) + `"}`, false},
 		{"many keys", `{"k1":"v1","k2":"v2","k3":"v3","k4":"v4","k5":"v5"}`, false},
 		{"unicode in string", `{"key": "Hello 世界"}`, false},

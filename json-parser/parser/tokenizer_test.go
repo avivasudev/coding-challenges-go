@@ -132,7 +132,7 @@ func TestParseStringToken(t *testing.T) {
 			"quote:\" slash:\\ forward:/ back:\b form:\f new:\n ret:\r tab:\t", STRING},
 		{"unterminated string", `"hello`, "unterminated string", INVALID},
 		{"unterminated escape", `"hello\`, "unterminated string", INVALID},
-		{"invalid escape", `"hello\x"`, "hellox", STRING}, // Current parser accepts all escapes
+		{"invalid escape", `"hello\x"`, "invalid escape sequence '\\x'", INVALID}, // Parser now rejects invalid escapes
 	}
 
 	for _, tt := range tests {
