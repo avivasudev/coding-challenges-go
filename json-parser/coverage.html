@@ -1,0 +1,543 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>parser: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">json-parser/parser/parser.go (98.8%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package parser
+
+import (
+        "fmt"
+        "unicode"
+)
+
+// JSONError provides structured error information for better testing
+type JSONError struct {
+        Message   string
+        Position  int
+        TokenType TokenType
+}
+
+func (e *JSONError) Error() string <span class="cov0" title="0">{
+        return fmt.Sprintf("%s at position %d", e.Message, e.Position)
+}</span>
+
+// TokenType represents different types of tokens
+type TokenType int
+
+const (
+        LEFT_BRACE TokenType = iota
+        RIGHT_BRACE
+        LEFT_BRACKET
+        RIGHT_BRACKET
+        STRING
+        COLON
+        COMMA
+        TRUE
+        FALSE
+        NULL
+        NUMBER
+        EOF
+        INVALID
+)
+
+// Token represents a single token with its type, value, and position
+type Token struct {
+        Type     TokenType
+        Value    string
+        Position int
+}
+
+// String method for better debugging
+func (t TokenType) String() string <span class="cov8" title="1">{
+        switch t </span>{
+        case LEFT_BRACE:<span class="cov8" title="1">
+                return "LEFT_BRACE"</span>
+        case RIGHT_BRACE:<span class="cov8" title="1">
+                return "RIGHT_BRACE"</span>
+        case LEFT_BRACKET:<span class="cov8" title="1">
+                return "LEFT_BRACKET"</span>
+        case RIGHT_BRACKET:<span class="cov8" title="1">
+                return "RIGHT_BRACKET"</span>
+        case STRING:<span class="cov8" title="1">
+                return "STRING"</span>
+        case COLON:<span class="cov8" title="1">
+                return "COLON"</span>
+        case COMMA:<span class="cov8" title="1">
+                return "COMMA"</span>
+        case TRUE:<span class="cov8" title="1">
+                return "TRUE"</span>
+        case FALSE:<span class="cov8" title="1">
+                return "FALSE"</span>
+        case NULL:<span class="cov8" title="1">
+                return "NULL"</span>
+        case NUMBER:<span class="cov8" title="1">
+                return "NUMBER"</span>
+        case EOF:<span class="cov8" title="1">
+                return "EOF"</span>
+        case INVALID:<span class="cov8" title="1">
+                return "INVALID"</span>
+        default:<span class="cov8" title="1">
+                return "UNKNOWN"</span>
+        }
+}
+
+// Tokenizer breaks input string into tokens
+type Tokenizer struct {
+        input    string
+        position int
+}
+
+// NewTokenizer creates a new tokenizer with the given input
+func NewTokenizer(input string) *Tokenizer <span class="cov8" title="1">{
+        return &amp;Tokenizer{
+                input:    input,
+                position: 0,
+        }
+}</span>
+
+// NextChar returns the current character and advances position
+func (t *Tokenizer) NextChar() rune <span class="cov8" title="1">{
+        if t.position &gt;= len(t.input) </span><span class="cov8" title="1">{
+                return 0 // EOF
+        }</span>
+        <span class="cov8" title="1">char := rune(t.input[t.position])
+        t.position++
+        return char</span>
+}
+
+
+// skipWhitespace skips all whitespace characters
+func (t *Tokenizer) skipWhitespace() <span class="cov8" title="1">{
+        for t.position &lt; len(t.input) </span><span class="cov8" title="1">{
+                char := rune(t.input[t.position])
+                if unicode.IsSpace(char) </span><span class="cov8" title="1">{
+                        t.position++
+                }</span> else<span class="cov8" title="1"> {
+                        break</span>
+                }
+        }
+}
+
+// parseStringToken reads a complete string token with escape handling
+func (t *Tokenizer) parseStringToken(startPos int) Token <span class="cov8" title="1">{
+        var result string
+
+        for t.position &lt; len(t.input) </span><span class="cov8" title="1">{
+                char := rune(t.input[t.position])
+
+                if char == '"' </span><span class="cov8" title="1">{
+                        // End of string
+                        t.position++
+                        return Token{Type: STRING, Value: result, Position: startPos}
+                }</span>
+
+                <span class="cov8" title="1">if char == '\\' </span><span class="cov8" title="1">{
+                        // Handle escape sequences
+                        t.position++
+                        if t.position &gt;= len(t.input) </span><span class="cov8" title="1">{
+                                return Token{Type: INVALID, Value: "unterminated string", Position: startPos}
+                        }</span>
+
+                        <span class="cov8" title="1">nextChar := rune(t.input[t.position])
+                        switch nextChar </span>{
+                        case '"':<span class="cov8" title="1">
+                                result += "\""</span>
+                        case '\\':<span class="cov8" title="1">
+                                result += "\\"</span>
+                        case '/':<span class="cov8" title="1">
+                                result += "/"</span>
+                        case 'b':<span class="cov8" title="1">
+                                result += "\b"</span>
+                        case 'f':<span class="cov8" title="1">
+                                result += "\f"</span>
+                        case 'n':<span class="cov8" title="1">
+                                result += "\n"</span>
+                        case 'r':<span class="cov8" title="1">
+                                result += "\r"</span>
+                        case 't':<span class="cov8" title="1">
+                                result += "\t"</span>
+                        default:<span class="cov8" title="1">
+                                result += string(nextChar)</span>
+                        }
+                        <span class="cov8" title="1">t.position++</span>
+                } else<span class="cov8" title="1"> {
+                        result += string(char)
+                        t.position++
+                }</span>
+        }
+
+        // If we reach here, string was not terminated
+        <span class="cov8" title="1">return Token{Type: INVALID, Value: "unterminated string", Position: startPos}</span>
+}
+
+// parseKeywordToken reads a complete keyword token (true, false, null)
+func (t *Tokenizer) parseKeywordToken(startPos int, firstChar rune) Token <span class="cov8" title="1">{
+        var keyword string
+        keyword += string(firstChar)
+
+        // Read alphabetic characters
+        for t.position &lt; len(t.input) </span><span class="cov8" title="1">{
+                char := rune(t.input[t.position])
+                if unicode.IsLetter(char) </span><span class="cov8" title="1">{
+                        keyword += string(char)
+                        t.position++
+                }</span> else<span class="cov8" title="1"> {
+                        break</span>
+                }
+        }
+
+        // Match against valid keywords (case-sensitive)
+        <span class="cov8" title="1">switch keyword </span>{
+        case "true":<span class="cov8" title="1">
+                return Token{Type: TRUE, Value: keyword, Position: startPos}</span>
+        case "false":<span class="cov8" title="1">
+                return Token{Type: FALSE, Value: keyword, Position: startPos}</span>
+        case "null":<span class="cov8" title="1">
+                return Token{Type: NULL, Value: keyword, Position: startPos}</span>
+        default:<span class="cov8" title="1">
+                return Token{Type: INVALID, Value: keyword, Position: startPos}</span>
+        }
+}
+
+// parseNumberToken reads a complete number token (positive integers)
+func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token <span class="cov8" title="1">{
+        var number string
+        number += string(firstChar)
+
+        // Read consecutive digits
+        for t.position &lt; len(t.input) </span><span class="cov8" title="1">{
+                char := rune(t.input[t.position])
+                if unicode.IsDigit(char) </span><span class="cov8" title="1">{
+                        number += string(char)
+                        t.position++
+                }</span> else<span class="cov8" title="1"> {
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">return Token{Type: NUMBER, Value: number, Position: startPos}</span>
+}
+
+// NextToken returns the next token from the input
+func (t *Tokenizer) NextToken() Token <span class="cov8" title="1">{
+        // Skip any leading whitespace
+        t.skipWhitespace()
+
+        // Remember position for token
+        tokenPos := t.position
+
+        // Get current character
+        char := t.NextChar()
+
+        // Process the character
+        switch char </span>{
+        case 0:<span class="cov8" title="1"> // EOF
+                return Token{Type: EOF, Value: "", Position: tokenPos}</span>
+        case '{':<span class="cov8" title="1">
+                return Token{Type: LEFT_BRACE, Value: "{", Position: tokenPos}</span>
+        case '}':<span class="cov8" title="1">
+                return Token{Type: RIGHT_BRACE, Value: "}", Position: tokenPos}</span>
+        case '[':<span class="cov8" title="1">
+                return Token{Type: LEFT_BRACKET, Value: "[", Position: tokenPos}</span>
+        case ']':<span class="cov8" title="1">
+                return Token{Type: RIGHT_BRACKET, Value: "]", Position: tokenPos}</span>
+        case '"':<span class="cov8" title="1">
+                // Parse string token (don't include the quote)
+                return t.parseStringToken(tokenPos)</span>
+        case ':':<span class="cov8" title="1">
+                return Token{Type: COLON, Value: ":", Position: tokenPos}</span>
+        case ',':<span class="cov8" title="1">
+                return Token{Type: COMMA, Value: ",", Position: tokenPos}</span>
+        case 't', 'f', 'n':<span class="cov8" title="1">
+                return t.parseKeywordToken(tokenPos, char)</span>
+        case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':<span class="cov8" title="1">
+                return t.parseNumberToken(tokenPos, char)</span>
+        default:<span class="cov8" title="1">
+                // Any other character is invalid
+                return Token{Type: INVALID, Value: string(char), Position: tokenPos}</span>
+        }
+}
+
+// Parser structure that wraps the tokenizer and tracks current token
+type Parser struct {
+        tokenizer    *Tokenizer
+        currentToken Token
+        position     int
+}
+
+// NewParser creates a new parser with the given input
+func NewParser(input string) *Parser <span class="cov8" title="1">{
+        tokenizer := NewTokenizer(input)
+        parser := &amp;Parser{
+                tokenizer: tokenizer,
+                position:  0,
+        }
+        parser.advance() // Load first token
+        return parser
+}</span>
+
+// advance moves to the next token
+func (p *Parser) advance() <span class="cov8" title="1">{
+        p.currentToken = p.tokenizer.NextToken()
+        p.position++
+}</span>
+
+// ParseJSON is the main entry point for parsing
+func (p *Parser) ParseJSON() error <span class="cov8" title="1">{
+        err := p.parseObject()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">if p.currentToken.Type != EOF </span><span class="cov8" title="1">{
+                return fmt.Errorf("unexpected token after JSON at position %d", p.currentToken.Position)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+// parseObject handles { key:value, key:value }
+func (p *Parser) parseObject() error <span class="cov8" title="1">{
+        if p.currentToken.Type != LEFT_BRACE </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected '{' at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        // Handle empty object
+        if p.currentToken.Type == RIGHT_BRACE </span><span class="cov8" title="1">{
+                p.advance()
+                return nil
+        }</span>
+
+        // Parse first key-value pair
+        <span class="cov8" title="1">err := p.parseKeyValuePair()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        // Parse additional key-value pairs
+        <span class="cov8" title="1">for p.currentToken.Type == COMMA </span><span class="cov8" title="1">{
+                p.advance()
+
+                // Check for trailing comma (invalid)
+                if p.currentToken.Type == RIGHT_BRACE </span><span class="cov8" title="1">{
+                        return fmt.Errorf("trailing comma is not allowed at position %d", p.currentToken.Position)
+                }</span>
+
+                <span class="cov8" title="1">err := p.parseKeyValuePair()
+                if err != nil </span><span class="cov8" title="1">{
+                        return err
+                }</span>
+        }
+
+        <span class="cov8" title="1">if p.currentToken.Type != RIGHT_BRACE </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected '}' at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        return nil</span>
+}
+
+// parseKeyValuePair handles "key": "value"
+func (p *Parser) parseKeyValuePair() error <span class="cov8" title="1">{
+        // Parse key
+        if p.currentToken.Type != STRING </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected string key at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        // Parse colon
+        if p.currentToken.Type != COLON </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected ':' after key at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        // Parse value
+        return p.parseValue()</span>
+}
+
+// parseValue handles string, boolean, null, number, array, and object values (for Step 4)
+func (p *Parser) parseValue() error <span class="cov8" title="1">{
+        switch p.currentToken.Type </span>{
+        case STRING, TRUE, FALSE, NULL, NUMBER:<span class="cov8" title="1">
+                p.advance()
+                return nil</span>
+        case LEFT_BRACE:<span class="cov8" title="1">
+                return p.parseObject()</span>
+        case LEFT_BRACKET:<span class="cov8" title="1">
+                return p.parseArray()</span>
+        default:<span class="cov8" title="1">
+                return fmt.Errorf("expected value at position %d", p.currentToken.Position)</span>
+        }
+}
+
+// parseArray handles [ value, value, value ]
+func (p *Parser) parseArray() error <span class="cov8" title="1">{
+        if p.currentToken.Type != LEFT_BRACKET </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected '[' at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        // Handle empty array
+        if p.currentToken.Type == RIGHT_BRACKET </span><span class="cov8" title="1">{
+                p.advance()
+                return nil
+        }</span>
+
+        // Parse first value
+        <span class="cov8" title="1">err := p.parseValue()
+        if err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        // Parse additional values
+        <span class="cov8" title="1">for p.currentToken.Type == COMMA </span><span class="cov8" title="1">{
+                p.advance()
+
+                // Check for trailing comma (invalid)
+                if p.currentToken.Type == RIGHT_BRACKET </span><span class="cov8" title="1">{
+                        return fmt.Errorf("trailing comma is not allowed at position %d", p.currentToken.Position)
+                }</span>
+
+                <span class="cov8" title="1">err := p.parseValue()
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+
+        <span class="cov8" title="1">if p.currentToken.Type != RIGHT_BRACKET </span><span class="cov8" title="1">{
+                return fmt.Errorf("expected ']' at position %d", p.currentToken.Position)
+        }</span>
+        <span class="cov8" title="1">p.advance()
+
+        return nil</span>
+}
+
+// ValidateJSON validates if the input string is valid JSON
+func ValidateJSON(input string) error <span class="cov8" title="1">{
+        parser := NewParser(input)
+        return parser.ParseJSON()
+}</span>
+
+// TestingTokenizer provides access to tokenizer internals for testing
+type TestingTokenizer struct {
+        *Tokenizer
+}
+
+// NewTestingTokenizer creates a tokenizer exposed for testing
+func NewTestingTokenizer(input string) *TestingTokenizer <span class="cov8" title="1">{
+        return &amp;TestingTokenizer{NewTokenizer(input)}
+}</span>
+
+// Expose private methods for unit testing
+func (tt *TestingTokenizer) ParseStringToken(startPos int) Token <span class="cov8" title="1">{
+        return tt.parseStringToken(startPos)
+}</span>
+
+func (tt *TestingTokenizer) ParseKeywordToken(startPos int, firstChar rune) Token <span class="cov8" title="1">{
+        return tt.parseKeywordToken(startPos, firstChar)
+}</span>
+
+func (tt *TestingTokenizer) ParseNumberToken(startPos int, firstChar rune) Token <span class="cov8" title="1">{
+        return tt.parseNumberToken(startPos, firstChar)
+}</span>
+
+func (tt *TestingTokenizer) SetPosition(pos int) <span class="cov8" title="1">{ tt.position = pos }</span>
+func (tt *TestingTokenizer) GetPosition() int <span class="cov8" title="1">{ return tt.position }</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

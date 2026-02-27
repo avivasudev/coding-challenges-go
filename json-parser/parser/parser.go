@@ -5,6 +5,17 @@ import (
 	"unicode"
 )
 
+// JSONError provides structured error information for better testing
+type JSONError struct {
+	Message   string
+	Position  int
+	TokenType TokenType
+}
+
+func (e *JSONError) Error() string {
+	return fmt.Sprintf("%s at position %d", e.Message, e.Position)
+}
+
 // TokenType represents different types of tokens
 type TokenType int
 
@@ -188,7 +199,20 @@ func (t *Tokenizer) parseNumberToken(startPos int, firstChar rune) Token {
 	var number string
 	number += string(firstChar)
 
-	// Read consecutive digits
+	// Check for invalid leading zeros (JSON spec: numbers cannot have leading zeros except for "0")
+	if firstChar == '0' {
+		// If we start with '0', only allow single '0' or immediately stop
+		if t.position < len(t.input) {
+			nextChar := rune(t.input[t.position])
+			if unicode.IsDigit(nextChar) {
+				// Leading zero followed by another digit is invalid (like "01", "013")
+				return Token{Type: INVALID, Value: "numbers cannot have leading zeros", Position: startPos}
+			}
+		}
+		return Token{Type: NUMBER, Value: number, Position: startPos}
+	}
+
+	// Read consecutive digits for non-zero numbers
 	for t.position < len(t.input) {
 		char := rune(t.input[t.position])
 		if unicode.IsDigit(char) {
@@ -268,7 +292,7 @@ func (p *Parser) advance() {
 
 // ParseJSON is the main entry point for parsing
 func (p *Parser) ParseJSON() error {
-	err := p.parseObject()
+	err := p.parseValue()  // Accept any JSON value, not just objects
 	if err != nil {
 		return err
 	}
@@ -350,6 +374,9 @@ func (p *Parser) parseValue() error {
 		return p.parseObject()
 	case LEFT_BRACKET:
 		return p.parseArray()
+	case INVALID:
+		// Return the specific error message from the tokenizer
+		return fmt.Errorf("%s at position %d", p.currentToken.Value, p.currentToken.Position)
 	default:
 		return fmt.Errorf("expected value at position %d", p.currentToken.Position)
 	}
@@ -402,3 +429,29 @@ func ValidateJSON(input string) error {
 	parser := NewParser(input)
 	return parser.ParseJSON()
 }
+
+// TestingTokenizer provides access to tokenizer internals for testing
+type TestingTokenizer struct {
+	*Tokenizer
+}
+
+// NewTestingTokenizer creates a tokenizer exposed for testing
+func NewTestingTokenizer(input string) *TestingTokenizer {
+	return &TestingTokenizer{NewTokenizer(input)}
+}
+
+// Expose private methods for unit testing
+func (tt *TestingTokenizer) ParseStringToken(startPos int) Token {
+	return tt.parseStringToken(startPos)
+}
+
+func (tt *TestingTokenizer) ParseKeywordToken(startPos int, firstChar rune) Token {
+	return tt.parseKeywordToken(startPos, firstChar)
+}
+
+func (tt *TestingTokenizer) ParseNumberToken(startPos int, firstChar rune) Token {
+	return tt.parseNumberToken(startPos, firstChar)
+}
+
+func (tt *TestingTokenizer) SetPosition(pos int) { tt.position = pos }
+func (tt *TestingTokenizer) GetPosition() int { return tt.position }
